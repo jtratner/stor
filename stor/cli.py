@@ -74,6 +74,7 @@ is not yet supported.
 """
 import argparse
 import copy
+from collections import OrderedDict
 from functools import partial
 import locale
 import logging
@@ -93,7 +94,8 @@ from stor import Path
 from stor import utils
 from stor.extensions import swiftstack
 
-PRINT_CMDS = ('list', 'listdir', 'ls', 'cat', 'pwd', 'walkfiles', 'url', 'convert-swiftstack')
+PRINT_CMDS = ('list', 'listdir', 'ls', 'cat', 'pwd', 'walkfiles', 'url', 'convert-swiftstack',
+              '_stat')
 SERVICES = ('s3', 'swift')
 
 ENV_FILE = os.path.expanduser('~/.stor-cli.env')
@@ -288,6 +290,32 @@ def _convert_swiftstack(path, bucket=None):
         raise ValueError("invalid path for conversion: '%s'" % path)
 
 
+def _stat(pth):
+    if stor.is_filesystem_path(pth):
+        stat_dict = pth._stat()
+    elif pth.startswith('s3'):
+        stat_dict = pth.stat()
+        headers = stat_dict.pop('Metadata', {})
+        stat_dict = OrderedDict([(k, str(v)) for k, v in stat_dict.items()])
+        stat_dict.update({'Meta %s' % k.title(): v for k, v in headers.items()})
+    elif pth.startswith('swift'):
+        stat_dict = pth.stat()
+        headers = stat_dict.pop('headers')
+        stat_dict = OrderedDict([(k.title(), str(v)) for k, v in stat_dict.items()])
+        meta_prefix = 'X-Object-Meta-'
+        metas = []
+        for k, v in headers.items():
+            k = k.title()
+            if k.startswith(meta_prefix):
+                metas.append(('Meta %s' % k[len(meta_prefix):], str(v)))
+            else:
+                stat_dict[k] = str(v)
+        stat_dict.update(metas)
+    key_padding = max(map(len, stat_dict.keys()))
+    template = '%%%ds: %%s' % key_padding
+    return [template % o for o in stat_dict.items()]
+
+
 def create_parser():
     parser = argparse.ArgumentParser(description='A command line interface for stor.')
 
@@ -397,6 +425,13 @@ def create_parser():
     parser_swiftstack.add_argument('path')
     parser_swiftstack.add_argument('--bucket', default=None)
     parser_swiftstack.set_defaults(func=_convert_swiftstack)
+
+    parser_stat = subparsers.add_parser('_stat',
+                                        help='Experimental command to '
+                                             ' show stat output (we have yet to finalize on a'
+                                             ' shared format for this)')
+    parser_stat.add_argument('path', type=get_path, metavar='PATH')
+    parser_stat.set_defaults(func=_stat)
 
     return parser
 

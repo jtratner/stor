@@ -569,6 +569,15 @@ class FileSystemPath(Path):
                 raise
         return self
 
+    def _stat(self):
+        """ Returns output of os.stat as a dict with st_ prefixes stripped.
+
+        NOTE: This is intentionally not part of the public API because it's not
+        clear what it's final form should be for filesystem paths"""
+        stat_obj = os.stat(self)
+        stat_dict = {k[3:]: getattr(stat_obj, k) for k in dir(stat_obj) if k.startswith('st_')}
+        return stat_dict
+
     def walkfiles(self, pattern=None, errors='strict'):  # flake8: noqa pragma: no cover 
         """ D.walkfiles() -> iterator over files in D, recursively.
         The optional argument `pattern` limits the results to files
