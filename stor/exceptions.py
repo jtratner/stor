@@ -42,6 +42,14 @@ class UnavailableError(RemoteError):
     pass
 
 
+class ConflictError(RemoteError):
+    """Thrown when a 409 response is returned."""
+
+
+class S3RestoreAlreadyInProgressError(ConflictError):
+    """Thrown when RestoreAlreadyInProgress on glacier restore"""
+
+
 class ConditionNotMetError(RemoteError):
     """Thrown when a condition is not met."""
     pass

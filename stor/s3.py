@@ -49,10 +49,14 @@ def _parse_s3_error(exc, **kwargs):
 
     if http_status == 403:
         return exceptions.UnauthorizedError(msg, exc)
-    elif http_status == 404:
+    if http_status == 404:
         return exceptions.NotFoundError(msg, exc)
-    elif http_status == 503:
+    if http_status == 503:
         return exceptions.UnavailableError(msg, exc)
+    if http_status == 409:
+        if 'Object restore is already in progress' in msg:
+            return exceptions.S3RestoreAlreadyInProgressError(msg, exc)
+        return exceptions.ConflictError(msg, exc)
 
     return exceptions.RemoteError(msg, exc)
 
@@ -245,7 +249,8 @@ class S3Path(OBSPath):
              use_manifest=False,
              # hidden args
              list_as_dir=False,
-             ignore_dir_markers=False):
+             ignore_dir_markers=False,
+             return_raw=False):
         """
         List contents using the resource of the path as a prefix.
 
@@ -299,8 +304,11 @@ class S3Path(OBSPath):
 
         results = self._get_s3_iterator('list_objects_v2', **list_kwargs)
         list_results = []
+        raw_results = []
         try:
             for page in results:
+                if return_raw:
+                    raw_results.append(page)
                 if 'Contents' in page:
                     list_results.extend([
                         path_prefix / result['Key']
@@ -317,6 +325,8 @@ class S3Path(OBSPath):
             six.raise_from(_parse_s3_error(e), e)
 
         utils.check_condition(condition, list_results)
+        if return_raw:
+            return list_results, raw_results
         return list_results
 
     def listdir(self):
@@ -762,3 +772,21 @@ class S3Path(OBSPath):
         """Returns HTTP url for object (virtual host-style)"""
         return u'https://{bucket}.s3.amazonaws.com/{key}'.format(bucket=self.bucket,
                                                                  key=self.resource)
+
+    def _versions(self):
+        """Experimental: access previous versions of the object (this can
+        return subdirectories or longer key names if they overlap)"""
+        return self._s3_client_call('list_object_versions', Bucket=self.bucket, Prefix=self.resource)
+
+    def _restore(self, tier='Bulk', days=10):
+        """Issue a restore command for the object from glacier"""
+        assert tier in ('Standard', 'Bulk', 'Expedited')
+        try:
+            return self._s3_client_call('restore_object',
+                                        Bucket=self.bucket,
+                                        Key=self.resource,
+                                        RestoreRequest={'Days': days,
+                                                        'GlacierJobParameters': {'Tier': tier}})
+        except exceptions.S3RestoreAlreadyInProgressError:
+            logger.debug('restore already started, not doing anything')
+            return None

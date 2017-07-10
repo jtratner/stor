@@ -1574,3 +1574,14 @@ class SwiftPath(OBSPath):
         storage_url = _get_or_create_auth_credentials(self.tenant)['os_storage_url']
         return six.text_type(os.path.join(*filter(None,
                                                   [storage_url, self.container, self.resource])))
+
+    def _to_swiftstack_s3_path(self, bucket):
+        from stor import join
+        import hashlib
+
+        h = hashlib.md5('{self.tenant}/{self.container}'.format(self=self)).hexdigest()
+        prefix = hex(long(h, 16) % 16**6)[2:-1]
+        parts = [self.tenant, self.container]
+        if self.resource:
+            parts.append(self.resource)
+        return join('s3://%s' % bucket, prefix, *parts)
