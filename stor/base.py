@@ -281,6 +281,12 @@ class Path(text_type):
     def listdir(self):
         raise NotImplementedError
 
+    def list_iter(self, *a, **k):
+        return iter(self.list(*a, **k))
+
+    def listdir_iter(self):
+        return iter(self.listdir())
+
     def glob(self, pattern):
         """ Glob for pattern relative to this directory.
 

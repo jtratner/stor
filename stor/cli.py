@@ -345,14 +345,14 @@ def create_parser():
                              help='Limit the amount of results returned.',
                              type=int,
                              metavar='INT')
-    parser_list.set_defaults(func=stor.list)
+    parser_list.set_defaults(func=stor.list_iter)
 
     ls_msg = 'List path as a directory.'
     parser_ls = subparsers.add_parser('ls',  # noqa
                                       help=ls_msg,
                                       description=ls_msg)
     parser_ls.add_argument('path', type=get_path, metavar='PATH')
-    parser_ls.set_defaults(func=stor.listdir)
+    parser_ls.set_defaults(func=stor.listdir_iter)
 
     cp_msg = 'Copy a source to a destination path.'
     parser_cp = subparsers.add_parser('cp',  # noqa

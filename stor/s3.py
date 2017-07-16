@@ -249,6 +249,50 @@ class S3Path(OBSPath):
         """
         return S3File(self, mode=mode, encoding=encoding)
 
+    def list_iter(self,
+                  starts_with=None,
+                  limit=None,
+                  list_as_dir=False,
+                  ignore_dir_markers=False):
+        bucket = self.bucket
+        prefix = self.resource
+
+        if starts_with:
+            prefix = prefix / starts_with if prefix else starts_with
+        else:
+            prefix = prefix or ''
+
+        list_kwargs = {
+            'Bucket': bucket,
+            'Prefix': prefix,
+            'PaginationConfig': {}
+        }
+
+        if limit:
+            list_kwargs['PaginationConfig']['MaxItems'] = limit
+
+        if list_as_dir:
+            # Ensure the the prefix has a trailing slash if there is a prefix
+            list_kwargs['Prefix'] = utils.with_trailing_slash(prefix) if prefix else ''
+            list_kwargs['Delimiter'] = '/'
+
+        path_prefix = S3Path('%s%s' % (self.drive, bucket))
+
+        results = self._get_s3_iterator('list_objects_v2', **list_kwargs)
+        try:
+            for page in results:
+                if 'Contents' in page:
+                    for result in page['Contents']:
+                        if ignore_dir_markers and utils.has_trailing_slash(result['Key']):
+                            continue
+                        yield path_prefix / result['Key']
+                if list_as_dir and 'CommonPrefixes' in page:
+                    for result in page['CommonPrefixes']:
+                        yield path_prefix / result['Prefix']
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e), e)
+
+
     def list(self,
              starts_with=None,
              limit=None,
@@ -277,8 +321,6 @@ class S3Path(OBSPath):
             RemoteError: An s3 client error occurred.
             ConditionNotMetError: Results were returned, but they did not meet the condition.
         """
-        bucket = self.bucket
-        prefix = self.resource
         utils.validate_condition(condition)
 
         if use_manifest:
@@ -286,46 +328,12 @@ class S3Path(OBSPath):
             manifest_cond = partial(utils.validate_manifest_list, object_names)
             condition = (utils.join_conditions(condition, manifest_cond)
                          if condition else manifest_cond)
-
-        if starts_with:
-            prefix = prefix / starts_with if prefix else starts_with
-        else:
-            prefix = prefix or ''
-
-        list_kwargs = {
-            'Bucket': bucket,
-            'Prefix': prefix,
-            'PaginationConfig': {}
-        }
-
-        if limit:
-            list_kwargs['PaginationConfig']['MaxItems'] = limit
-
-        if list_as_dir:
-            # Ensure the the prefix has a trailing slash if there is a prefix
-            list_kwargs['Prefix'] = utils.with_trailing_slash(prefix) if prefix else ''
-            list_kwargs['Delimiter'] = '/'
-
-        path_prefix = S3Path('%s%s' % (self.drive, bucket))
-
-        results = self._get_s3_iterator('list_objects_v2', **list_kwargs)
-        list_results = []
-        try:
-            for page in results:
-                if 'Contents' in page:
-                    list_results.extend([
-                        path_prefix / result['Key']
-                        for result in page['Contents']
-                        if not ignore_dir_markers or
-                        (ignore_dir_markers and not utils.has_trailing_slash(result['Key']))
-                    ])
-                if list_as_dir and 'CommonPrefixes' in page:
-                    list_results.extend([
-                        path_prefix / result['Prefix']
-                        for result in page['CommonPrefixes']
-                    ])
-        except botocore_exceptions.ClientError as e:
-            six.raise_from(_parse_s3_error(e), e)
+        list_results = list(self.list_iter(
+            starts_with=starts_with,
+            limit=limit,
+            list_as_dir=list_as_dir,
+            ignore_dir_markers=ignore_dir_markers
+            ))
 
         utils.check_condition(condition, list_results)
         return list_results
@@ -333,6 +341,9 @@ class S3Path(OBSPath):
     def listdir(self):
         """List the path as a dir, returning top-level directories and files."""
         return self.list(list_as_dir=True)
+
+    def listdir_iter(self):
+        return self.list_iter(list_as_dir=True)
 
     def exists(self):
         """
