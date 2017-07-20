@@ -126,6 +126,7 @@ def _backoff(f, *args, **kwargs):
         except exceptions as error:
             if not is_retry_ok_function(error):
                 raise error
+            logger.info('(retrying) hit exception %s: %s', type(error), error)
             time.sleep(sleep_time)
             sleep_time = sleep_function(sleep_time, retry)
             if cleanup_function is not None:
