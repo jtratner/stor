@@ -35,6 +35,7 @@ the `SwiftPath` class.
 import copy
 from functools import partial
 from functools import wraps
+import hashlib
 import json
 import logging
 import os

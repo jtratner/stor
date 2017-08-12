@@ -233,7 +233,8 @@ class S3Path(OBSPath):
                   starts_with=None,
                   limit=None,
                   list_as_dir=False,
-                  ignore_dir_markers=False):
+                  ignore_dir_markers=False,
+                  _raw=False):
         bucket = self.bucket
         prefix = self.resource
 
@@ -265,10 +266,19 @@ class S3Path(OBSPath):
                     for result in page['Contents']:
                         if ignore_dir_markers and utils.has_trailing_slash(result['Key']):
                             continue
-                        yield path_prefix / result['Key']
+                        if _raw:
+                            # custom thing to deal with S3's weird scoping
+                            result['FullPath'] = path_prefix / result['Key']
+                            yield result
+                        else:
+                            yield path_prefix / result['Key']
                 if list_as_dir and 'CommonPrefixes' in page:
                     for result in page['CommonPrefixes']:
-                        yield path_prefix / result['Prefix']
+                        if _raw:
+                            result['FullPath'] = path_prefix / result['Prefix']
+                            yield result
+                        else:
+                            yield path_prefix / result['Prefix']
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e), e)
 
@@ -280,7 +290,8 @@ class S3Path(OBSPath):
              use_manifest=False,
              # hidden args
              list_as_dir=False,
-             ignore_dir_markers=False):
+             ignore_dir_markers=False,
+             _raw=False):
         """
         List contents using the resource of the path as a prefix.
 
@@ -312,7 +323,8 @@ class S3Path(OBSPath):
             starts_with=starts_with,
             limit=limit,
             list_as_dir=list_as_dir,
-            ignore_dir_markers=ignore_dir_markers
+            ignore_dir_markers=ignore_dir_markers,
+            _raw=_raw
             ))
 
         utils.check_condition(condition, list_results)

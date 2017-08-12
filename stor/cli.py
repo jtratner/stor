@@ -92,7 +92,8 @@ from stor import settings
 from stor import Path
 from stor import utils
 
-PRINT_CMDS = ('list', 'listdir', 'ls', 'cat', 'pwd', 'walkfiles', '_stat')
+PRINT_CMDS = ('list', 'listdir', 'ls', 'cat', 'pwd', 'walkfiles', '_stat',
+              '_to_s3', '_to_swift')
 SERVICES = ('s3', 'swift')
 
 ENV_FILE = os.path.expanduser('~/.stor-cli.env')
@@ -263,6 +264,14 @@ def get_path(pth, mode=None):
     return prefix / path_part.split(rel_part, depth)[depth].lstrip('/')
 
 
+def _to_s3(pth, bucket):
+    return str(stor.Path(pth)._to_swiftstack_s3_bucket(bucket))
+
+
+def _to_swift(pth):
+    return str(stor.Path(pth)._swiftstack_s3_to_swift())
+
+
 def _stat(pth):
     if stor.is_filesystem_path(pth):
         stat_dict = pth._stat()
@@ -400,6 +409,18 @@ def create_parser():
                                              ' shared format for this)')
     parser_stat.add_argument('path', type=get_path, metavar='PATH')
     parser_stat.set_defaults(func=_stat)
+    parser_stat = subparsers.add_parser('_to_s3',
+                                        help='Experimental command to '
+                                             ' convert swift path to s3 path')
+    parser_stat.add_argument('path', type=get_path, metavar='PATH')
+    parser_stat.add_argument('--bucket', default='counsyl-final-analysis-prod')
+    parser_stat.set_defaults(func=_to_s3)
+    parser_stat = subparsers.add_parser('_to_swift',
+                                        help='Experimental command to '
+                                             ' convert s3 path to swift path')
+    parser_stat.add_argument('path', type=get_path, metavar='PATH')
+    parser_stat.set_defaults(func=_to_swift)
+
 
     return parser
 
