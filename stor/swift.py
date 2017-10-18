@@ -711,7 +711,8 @@ class SwiftPath(OBSPath):
              # intentionally not documented
              list_as_dir=False,
              ignore_segment_containers=True,
-             ignore_dir_markers=False):
+             ignore_dir_markers=False,
+             return_raw=False):
         """List contents using the resource of the path as a prefix.
 
         This method retries ``num_retries`` times if swift is unavailable
@@ -780,6 +781,11 @@ class SwiftPath(OBSPath):
                                                   **list_kwargs)
 
         result_objs = results[1]
+        if return_raw:
+            path_pre = SwiftPath('%s%s' % (self.drive, tenant)) / (self.container or '')
+            for r in result_objs:
+                r['path'] = path_pre / (r.get('name') or r['subdir'].rstrip('/'))
+            return result_objs
         if ignore_dir_markers:
             result_objs = [r for r in result_objs if r.get('content_type') not in DIR_MARKER_TYPES]
 
