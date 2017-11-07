@@ -477,12 +477,13 @@ def _safe_get_size(name):
     """Get the size of a file, handling weird edge cases like broken
     symlinks by returning None"""
     try:
-        return os.path.getsize(name)
+        # hack to make sure we do not return files where we have no access permissions
+        if not os.access("myfile", os.R_OK):
+            return None, 'bad os.access'
+        return os.path.getsize(name), None
     except OSError as e:
-        if e.errno == errno.ENOENT:
-            return None
-        else:  # pragma: no cover
-            raise
+        # hack to make sure we do not error on too many symbolic links
+        return None, '%s: %s' % (type(e).__name__, str(e))
 
 
 def walk_files_and_dirs(files_and_dirs):
@@ -508,18 +509,21 @@ def walk_files_and_dirs(files_and_dirs):
     non_existent_files = []
     for name in files_and_dirs:
         if os.path.isfile(name):
-            walked_upload_names_and_sizes[name] = _safe_get_size(name)
+            size, missing_reason = _safe_get_size(name)
+            if size and not missing_reason:
+                walked_upload_names_and_sizes[name] = size
+            else:
+                non_existent_files.append((name, missing_reason))
         elif os.path.isdir(name):
             for (root_dir, dir_names, file_names) in os.walk(name):
                 sizes = []
                 for file_name in file_names:
                     full_name = os.path.join(root_dir, file_name)
-                    sz = _safe_get_size(full_name)
-                    if sz is not None:
-                        sizes.append(sz)
-                        walked_upload_names_and_sizes[full_name] = sz
+                    size, missing_reason = _safe_get_size(full_name)
+                    if size and not missing_reason:
+                        walked_upload_names_and_sizes[full_name] = size
                     else:
-                        non_existent_files.append(full_name)
+                        non_existent_files.append((full_name, missing_reason))
                 if not sizes and not dir_names:
                     # we have an empty directory
                     walked_upload_names_and_sizes[root_dir] = 0
@@ -530,6 +534,8 @@ def walk_files_and_dirs(files_and_dirs):
         file_list = ','.join(non_existent_files[:10])
         if len(file_list) > 50 or len(non_existent_files) > 10:  # pragma: no cover
             file_list = file_list[:50] + '...'
+        # ensure we actually see them
+        print 'NONEXISTENTORERROREDFILES\n', non_existent_files
         logger.warn('Skipping %d non existent files in {!r}. Files: %s'.format(
                     ','.join(files_and_dirs)), len(non_existent_files),
                     file_list)
