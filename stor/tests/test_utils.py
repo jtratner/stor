@@ -15,6 +15,7 @@ from stor.s3 import S3Path
 from stor.swift import SwiftPath
 from stor.windows import WindowsPath
 from stor import utils
+from stor.utils import swiftstack
 
 
 class TestBaseProgressLogger(unittest.TestCase):
@@ -460,3 +461,11 @@ class TestIsWriteableS3(unittest.TestCase):
         self.mock_copy.side_effect = stor.exceptions.FailedUploadError('foo')
         self.assertFalse(utils.is_writeable('s3://stor-test/foo/bar'))
         self.assertFalse(self.mock_remove.called)
+
+
+class SwiftStackExtensions(unittest.TestCase):
+    def test_helpers(self):
+        assert str(swiftstack.swift_to_s3("swift://AUTH_seq_upload_prod/D00576", "ex-bucket")
+                ) == "s3://ex-bucket/a9bf76/AUTH_seq_upload_prod/D00576"
+        assert str(swiftstack.s3_to_swift("s3://ex-bucket/a9bf76/AUTH_seq_upload_prod/D00576")
+                ) == "swift://AUTH_seq_upload_prod/D00576"
