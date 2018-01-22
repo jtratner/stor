@@ -79,6 +79,7 @@ makedirs_p = _delegate_to_path('makedirs_p')
 remove = _delegate_to_path('remove')
 rmtree = _delegate_to_path('rmtree')
 walkfiles = _delegate_to_path('walkfiles')
+as_uri = _delegate_to_path('as_uri')
 
 
 def glob(pth, pattern):  # pragma: no cover
@@ -142,4 +143,5 @@ __all__ = [
     'is_swift_path',
     'is_obs_path',
     'NamedTemporaryDirectory',
+    'as_uri',
 ]

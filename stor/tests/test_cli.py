@@ -13,6 +13,8 @@ from stor import exceptions
 from stor import settings
 from stor import test
 
+import stor
+
 
 @mock.patch('sys.stdout', new=six.StringIO())
 class BaseCliTest(test.S3TestCase, test.SwiftTestCase):
@@ -460,12 +462,19 @@ class TestToUri(BaseCliTest):
         self.parse_args('stor uri s3://test/file')
         self.assertEquals(sys.stdout.getvalue(), 'https://test.s3.amazonaws.com/file\n')
 
-    @mock.patch('sys.stderr', new=six.StringIO())
-    def test_file_uri_error(self):
-        with self.assertRaises(SystemExit):
-            self.parse_args('stor uri /test/file')
-        self.assertEquals(sys.stdout.getvalue(), '')
-        self.assertIn('must be swift or s3 path', sys.stderr.getvalue())
+    def test_file_uri(self):
+        self.parse_args('stor uri /test/file')
+        self.assertEquals(sys.stdout.getvalue(), 'file:///test/file\n')
+
+    def test_relative_file_uri(self):
+        with stor.NamedTemporaryDirectory(change_dir=True) as ntd:
+            self.parse_args('stor uri mypath/myfile.ext')
+            expected = 'file://' + stor.join(str(ntd), 'mypath', 'myfile.ext')
+            self.assertEquals(sys.stdout.getvalue(), expected + '\n')
+
+    def test_s3_uri(self):
+        self.parse_args('stor uri s3://test/file')
+        self.assertEquals(sys.stdout.getvalue(), 'https://test.s3.amazonaws.com/file\n')
 
 
 class TestCat(BaseCliTest):

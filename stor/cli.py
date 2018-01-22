@@ -268,12 +268,6 @@ def get_path(pth, mode=None):
     return prefix / path_part.split(rel_part, depth)[depth].lstrip('/')
 
 
-def _as_uri(path):
-    if stor.is_filesystem_path(path):
-        raise ValueError('must be swift or s3 path')
-    return stor.Path(path).as_uri()
-
-
 def create_parser():
     parser = argparse.ArgumentParser(description='A command line interface for stor.')
 
@@ -378,7 +372,7 @@ def create_parser():
     parser_clear.set_defaults(func=_clear_env)
     url_parser = subparsers.add_parser('uri', help='generate URI for path')
     url_parser.add_argument('path')
-    url_parser.set_defaults(func=_as_uri)
+    url_parser.set_defaults(func=stor.as_uri)
 
     return parser
 

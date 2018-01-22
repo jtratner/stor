@@ -362,6 +362,10 @@ class Path(text_type):
         """
         raise NotImplementedError
 
+    def as_uri(self):
+        """Returns URI for resource - either file:// (filesystem) or https:// (OBS)"""
+        raise NotImplementedError
+
 
 class FileSystemPath(Path):
     """'Abstract' class implementing file-system specific operations.
@@ -615,3 +619,11 @@ class FileSystemPath(Path):
             elif isdir:
                 for f in child.walkfiles(pattern, errors):
                     yield f
+
+    def as_uri(self):
+        """Returns file URI for resource (does no path normalization to avoid issues with symlinks)"""
+        # will just be self if it is an absolute path
+        path = self.joinpath(os.getcwd())
+        return six.moves.urllib_parse.urljoin( "file://", six.moves.urllib.request.pathname2url(path))
+        # go for full file URI excluding hostname
+        return 'file://' + str(path)
