@@ -478,7 +478,7 @@ def _safe_get_size(name):
     symlinks by returning None"""
     try:
         # hack to make sure we do not return files where we have no access permissions
-        if not os.access("myfile", os.R_OK):
+        if not os.access(name, os.R_OK):
             return None, 'bad os.access'
         return os.path.getsize(name), None
     except OSError as e:
@@ -531,12 +531,12 @@ def walk_files_and_dirs(files_and_dirs):
             raise ValueError('file "%s" not found' % name)
 
     if non_existent_files:
-        file_list = ','.join(non_existent_files[:10])
+        file_list = ','.join(name for name, _ in non_existent_files[:10])
         if len(file_list) > 50 or len(non_existent_files) > 10:  # pragma: no cover
             file_list = file_list[:50] + '...'
         # ensure we actually see them
         print 'NONEXISTENTORERROREDFILES\n', non_existent_files
-        logger.warn('Skipping %d non existent files in {!r}. Files: %s'.format(
+        logger.warn('Skipping %d non-existent files in {!r}. Files: %s'.format(
                     ','.join(files_and_dirs)), len(non_existent_files),
                     file_list)
 
