@@ -594,7 +594,7 @@ class SwiftPath(OBSPath):
 
     @_swift_retry(exceptions=(NotFoundError, UnavailableError,
                               InconsistentDownloadError, UnauthorizedError))
-    def read_object(self):
+    def read_object(self, chunk_size=5):
         """Reads an individual object.
 
         This method retries ``num_retries`` times if swift is unavailable or if
@@ -602,10 +602,13 @@ class SwiftPath(OBSPath):
         `module-level documentation <swiftretry>` for more
         information about configuring retry logic at the module or method
         level.
+
+        chunk_size: if specified, return a generator of bytes rather than an object
         """
         headers, content = self._swift_connection_call('get_object',
                                                        self.container,
-                                                       self.resource)
+                                                       self.resource,
+                                                       chunk_size=chunk_size)
         return content
 
     def temp_url(self, lifetime=300, method='GET', inline=True, filename=None):
