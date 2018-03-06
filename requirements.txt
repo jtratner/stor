@@ -4,3 +4,5 @@ boto3>=1.4.0
 python-keystoneclient>=1.8.1
 python-swiftclient
 six
+# note this was already a transitive dependency of this package
+python-dateutil
