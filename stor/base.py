@@ -14,7 +14,6 @@ from six import string_types
 from six import PY3
 
 from stor import utils
-import six
 
 
 class TreeWalkWarning(Warning):
@@ -286,6 +285,7 @@ class Path(text_type):
 
     def listdir_iter(self):
         return iter(self.listdir())
+
 
     def glob(self, pattern):
         """ Glob for pattern relative to this directory.

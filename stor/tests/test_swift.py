@@ -2648,3 +2648,38 @@ class TestExceptionParsing(unittest.TestCase):
             http_host='swift.counsyl.com', http_status=403, msg='Object GET failed')
         with self.assertRaises(exceptions.ObjectInColdStorageError):
             swift._swiftclient_error_to_descriptive_exception(exc)
+
+import vcr
+from freezegun import freeze_time
+
+def swift_cassette(path, date, **kwargs):
+    """Make a VCR py cassette with appropriate filters for swift"""
+    kwargs.setdefault('filter_headers', [])
+    kwargs['filter_headers'].append('X-Auth-Token')
+    kwargs.setdefault('filter_post_data_parameters', ['auth'])
+
+    def wrapper(f):
+        wrapped = freeze_time(date)(f)
+        wrapped2 = vcr.use_cassette(path, **kwargs)(wrapped)
+        return wrapped2
+    return wrapper
+
+
+@swift_cassette('stor/tests/fixtures/swift-listing-roundtrip',
+                '2018-03-06')
+def test_swift_listing_roundtrip():
+    import datetime
+    test_container = stor.Path('swift://AUTH_swft_test/fixture-container')
+    for rng in range(1, 4):
+        with stor.open(test_container / str(rng) + '.txt', 'w') as fp:
+            fp.write(str(rng) * rng)
+    results = list(sorted(test_container.rich_list_iter()))
+    assert all(len(r) == 4 for r in results)
+    assert isinstance(results[0][1], datetime.datetime)
+    # i.e., should be localized to utc
+    assert results[0][1].tzinfo
+    assert [[r[0]] + r[-2:] for r in results] == [
+        [1, 'text/plain', test_container / '1.txt'],
+        [2, 'text/plain', test_container / '2.txt'],
+        [3, 'text/plain', test_container / '3.txt']
+    ]

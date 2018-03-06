@@ -240,6 +240,17 @@ class OBSPath(Path):
         """Get HTTPS URL for given path"""
         raise NotImplementedError
 
+    def rich_list_iter(self, *a, **k):
+        """List of rich output, ordering is implementation-dependent and subject to change"""
+        k['return_raw'] = True
+        it = self.list_iter(*a, **k)
+        for pth, raw_result in it:
+            yield self.raw_result_to_ls(raw_result) + [pth]
+
+    def raw_result_to_ls(self, raw_result):
+        """Convert single line to list of entries. First entry must be size, second should be last modified."""
+        raise NotImplementedError
+
 
 class OBSFile(object):
     """

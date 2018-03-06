@@ -776,19 +776,15 @@ class SwiftPath(OBSPath):
                                                   **list_kwargs)
 
         result_objs = results[1]
-        if return_raw:
-            path_pre = SwiftPath('%s%s' % (self.drive, tenant)) / (self.container or '')
-            for r in result_objs:
-                r['path'] = path_pre / (r.get('name') or r['subdir'].rstrip('/'))
-            return result_objs
         if ignore_dir_markers:
             result_objs = [r for r in result_objs if r.get('content_type') not in DIR_MARKER_TYPES]
 
         path_pre = SwiftPath('%s%s' % (self.drive, tenant)) / (self.container or '')
-        paths = list({
-            path_pre / (r.get('name') or r['subdir'].rstrip('/'))
-            for r in result_objs
-        })
+        paths = {path_pre / (r.get('name') or r['subdir'].rstrip('/')): r for r in result_objs}
+        if return_raw:
+            return list(paths.items())
+        else:
+            paths = list(paths.keys())
 
         if ignore_segment_containers:
             paths = [p for p in paths if not p.is_segment_container()]
@@ -1581,3 +1577,13 @@ class SwiftPath(OBSPath):
         storage_url = _get_or_create_auth_credentials(self.tenant)['os_storage_url']
         return six.text_type(os.path.join(*filter(None,
                                                   [storage_url, self.container, self.resource])))
+
+    def raw_result_to_ls(self, raw_result):
+        """
+        >>> raw_result_to_shared_dict({u'bytes': 1234, u'content_type': u'application/json', u'hash': u'<hash>', u'last_modified': u'2018-03-06T04:59:39.411710', u'name': u'<resource>'})
+        [1234, datetime.datetime(2018, 3, 6, 4, 59, 39, 411710, tzinfo=tzutc(), 'application/json']
+        """
+        from dateutil.parser import parse
+        import pytz
+        return [raw_result['bytes'], parse(raw_result['last_modified']).replace(tzinfo=pytz.utc),
+                raw_result['content_type']]

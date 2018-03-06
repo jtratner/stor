@@ -253,7 +253,8 @@ class S3Path(OBSPath):
                   starts_with=None,
                   limit=None,
                   list_as_dir=False,
-                  ignore_dir_markers=False):
+                  ignore_dir_markers=False,
+                  return_raw=False):
         bucket = self.bucket
         prefix = self.resource
 
@@ -267,6 +268,8 @@ class S3Path(OBSPath):
             'Prefix': prefix,
             'PaginationConfig': {}
         }
+
+        assert not list_as_dir and return_raw, 'list_as_dir and return raw are incompatible'
 
         if limit:
             list_kwargs['PaginationConfig']['MaxItems'] = limit
@@ -285,7 +288,12 @@ class S3Path(OBSPath):
                     for result in page['Contents']:
                         if ignore_dir_markers and utils.has_trailing_slash(result['Key']):
                             continue
-                        yield path_prefix / result['Key']
+                        assert 'Path' not in result
+                        result['Path'] = str(path_prefix / result['Key'])
+                        if return_raw:
+                            yield result['Path'], result
+                        else:
+                            yield result['Path']
                 if list_as_dir and 'CommonPrefixes' in page:
                     for result in page['CommonPrefixes']:
                         yield path_prefix / result['Prefix']
@@ -300,7 +308,8 @@ class S3Path(OBSPath):
              use_manifest=False,
              # hidden args
              list_as_dir=False,
-             ignore_dir_markers=False):
+             ignore_dir_markers=False,
+             return_raw=False):
         """
         List contents using the resource of the path as a prefix.
 
@@ -332,7 +341,8 @@ class S3Path(OBSPath):
             starts_with=starts_with,
             limit=limit,
             list_as_dir=list_as_dir,
-            ignore_dir_markers=ignore_dir_markers
+            ignore_dir_markers=ignore_dir_markers,
+            return_raw=return_raw,
             ))
 
         utils.check_condition(condition, list_results)
@@ -811,3 +821,10 @@ class S3Path(OBSPath):
             logger.debug('restore already started, not doing anything')
         except exceptions.AlreadyRestoredError:
             logger.debug('already restored, not doing anything')
+
+    def raw_result_to_ls(self, raw_result):
+        """
+        >>> raw_result_to_shared_dict({u'ETag': '"<etag>"', u'Key': '<object>', u'LastModified': datetime.datetime(2017, 12, 23, 19, 31, 19, tzinfo=tzutc()), u'Size': 1234, u'StorageClass': 'GLACIER'})
+        [1234, datetime.datetime(2017, 12, 23, 19, 31, 19, tzinfo=tzutc()), 'GLACIER']
+        """
+        return [raw_result['Size'], raw_result['LastModified'], raw_result['StorageClass']]
