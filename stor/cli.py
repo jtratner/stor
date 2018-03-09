@@ -95,7 +95,7 @@ from stor import utils
 from stor.extensions import swiftstack
 
 PRINT_CMDS = ('list', 'listdir', 'ls', 'cat', 'pwd', 'walkfiles', 'url', 'convert-swiftstack',
-              '_stat')
+              '_stat', '_list')
 SERVICES = ('s3', 'swift')
 
 ENV_FILE = os.path.expanduser('~/.stor-cli.env')
@@ -315,6 +315,43 @@ def _stat(pth):
     template = '%%%ds: %%s' % key_padding
     return [template % o for o in stat_dict.items()]
 
+# shamelessly stolen from swiftclient
+def prt_bytes(num_bytes, human_flag):
+    """
+    convert a number > 1024 to printable format, either in 4 char -h format as
+    with ls -lh or return as 12 char right justified string
+    """
+
+    if not human_flag:
+        return '%12s' % num_bytes
+
+    num = float(num_bytes)
+    suffixes = [None] + list('KMGTPEZY')
+    for suffix in suffixes[:-1]:
+        if num <= 1023:
+            break
+        num /= 1024.0
+    else:
+        suffix = suffixes[-1]
+
+    if not suffix:  # num_bytes must be < 1024
+        return '%4s' % num_bytes
+    elif num >= 10:
+        return '%3d%s' % (num, suffix)
+    else:
+        return '%.1f%s' % (num, suffix)
+
+def _rich_list(path):
+    import datetime
+    from dateutil.tz import tzlocal
+    local_tz = tzlocal()
+    for row in stor.Path(path).rich_list_iter():
+        row[0] = prt_bytes(row[0], True)
+        for i in range(len(row)):
+            if isinstance(row[i], datetime.datetime):
+                row[i] = row[i].astimezone(local_tz)
+        yield '	'.join(map(str, row))
+
 
 def create_parser():
     parser = argparse.ArgumentParser(description='A command line interface for stor.')
@@ -432,6 +469,10 @@ def create_parser():
                                              ' shared format for this)')
     parser_stat.add_argument('path', type=get_path, metavar='PATH')
     parser_stat.set_defaults(func=_stat)
+
+    parser_rich_list = subparsers.add_parser('_list', help='experimental command to list with useful data')
+    parser_rich_list.add_argument('path', type=get_path, metavar='PATH')
+    parser_rich_list.set_defaults(func=_rich_list)
 
     return parser
 

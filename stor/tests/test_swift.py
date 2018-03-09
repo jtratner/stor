@@ -2683,3 +2683,5 @@ def test_swift_listing_roundtrip():
         [2, 'text/plain', test_container / '2.txt'],
         [3, 'text/plain', test_container / '3.txt']
     ]
+
+
