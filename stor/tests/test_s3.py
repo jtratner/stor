@@ -1605,3 +1605,25 @@ class TestS3ErrorParsing(unittest.TestCase):
         obj = s3._parse_s3_error(ClientError(error_response, u'RestoreObject'),
                                  Bucket='BUCKETNAME', Key='KEYNAME')
         self.assertIsInstance(obj, exceptions.AlreadyRestoredError)
+
+import vcr
+
+@vcr.use_cassette('stor/tests/fixtures/s3-listing-roundtrip')
+def test_s3_listing_roundtrip():
+    import uuid
+    import datetime
+    test_container = stor.Path('s3://stor-test-bucket/%s' % uuid.uuid4())
+    for rng in range(1, 4):
+        with stor.open(test_container / str(rng) + '.txt', 'w') as fp:
+            fp.write(str(rng) * rng)
+    results = list(sorted(test_container.rich_list_iter()))
+    test_container.rmtree()
+    assert all(len(r) == 4 for r in results)
+    assert isinstance(results[0][1], datetime.datetime)
+    # i.e., should be localized to utc
+    assert results[0][1].tzinfo
+    assert [[r[0]] + r[-2:] for r in results] == [
+        [1, test_container / '1.txt'],
+        [2, test_container / '2.txt'],
+        [3, test_container / '3.txt']
+    ]
