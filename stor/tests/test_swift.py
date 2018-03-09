@@ -4,11 +4,13 @@ import os
 from tempfile import NamedTemporaryFile
 import unittest
 
+
 import freezegun
 import mock
 from swiftclient.exceptions import ClientException
 from swiftclient.service import SwiftError
 from testfixtures import LogCapture
+import vcr
 
 import stor
 from stor import exceptions
@@ -2649,9 +2651,6 @@ class TestExceptionParsing(unittest.TestCase):
         with self.assertRaises(exceptions.ObjectInColdStorageError):
             swift._swiftclient_error_to_descriptive_exception(exc)
 
-import vcr
-from freezegun import freeze_time
-
 def swift_cassette(path, date, **kwargs):
     """Make a VCR py cassette with appropriate filters for swift"""
     kwargs.setdefault('filter_headers', [])
@@ -2659,7 +2658,7 @@ def swift_cassette(path, date, **kwargs):
     kwargs.setdefault('filter_post_data_parameters', ['auth'])
 
     def wrapper(f):
-        wrapped = freeze_time(date)(f)
+        wrapped = freezegun.freeze_time(date)(f)
         wrapped2 = vcr.use_cassette(path, **kwargs)(wrapped)
         return wrapped2
     return wrapper
@@ -2683,5 +2682,3 @@ def test_swift_listing_roundtrip():
         [2, 'text/plain', test_container / '2.txt'],
         [3, 'text/plain', test_container / '3.txt']
     ]
-
-
