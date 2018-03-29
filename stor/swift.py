@@ -380,13 +380,29 @@ class SwiftDownloadLogger(utils.BaseProgressLogger):
 
 
 class TQDMDownloadLogger(object):
+    bytes_bar = None
+    objects_bar = None
+
     def __init__(self, total_objects=0, total_size=0, **tqdm_args):
+        self.total_objects = total_objects
+        self.total_size = total_size
+        self.tqdm_args = tqdm_args
+
+    def __enter__(self):
         import tqdm
-        self.bytes_bar = tqdm.tqdm(desc='bytes', total=total_size,
-                                   **tqdm_args)
-        self.objects_bar = tqdm.tqdm(desc='objects', total=total_objects, **tqdm_args)
+        self.bytes_bar = tqdm.tqdm(desc='bytes', total=self.total_size,
+                                   unit='B', unit_scale=True,
+                                   **self.tqdm_args)
+        self.objects_bar = tqdm.tqdm(desc='objects', total=self.total_objects, **self.tqdm_args)
+
+    def __exit__(self, a, b, c):
+        if self.bytes_bar:
+            self.bytes_bar.close()
+        if self.objects_bar:
+            self.objects_bar.close()
 
     def add_result(self, result):
+        print('add_result: %s', result)
         if result.get('action', None) == 'download_object':
             self.objects_bar.update(1)
             self.bytes_bar.update(result.get('read_length', 0))

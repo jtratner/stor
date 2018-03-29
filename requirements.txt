@@ -6,3 +6,4 @@ python-swiftclient
 six
 # note this was already a transitive dependency of this package
 python-dateutil
+tqdm

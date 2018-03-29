@@ -269,7 +269,7 @@ class S3Path(OBSPath):
             'PaginationConfig': {}
         }
 
-        assert not list_as_dir and return_raw, 'list_as_dir and return raw are incompatible'
+        # assert not list_as_dir and return_raw, 'list_as_dir and return raw are incompatible'
 
         if limit:
             list_kwargs['PaginationConfig']['MaxItems'] = limit
@@ -296,7 +296,7 @@ class S3Path(OBSPath):
                             yield result['Path']
                 if list_as_dir and 'CommonPrefixes' in page:
                     for result in page['CommonPrefixes']:
-                        yield path_prefix / result['Prefix']
+                        yield path_prefix / result['Prefix'], result
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e), e)
 
