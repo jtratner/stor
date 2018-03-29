@@ -379,6 +379,33 @@ class SwiftDownloadLogger(utils.BaseProgressLogger):
         ) % (self.num_results, formatted_elapsed_time, mb, mb_s)
 
 
+class TQDMDownloadLogger(object):
+    def __init__(self, total_objects=0, total_size=0, **tqdm_args):
+        import tqdm
+        self.bytes_bar = tqdm.tqdm(desc='bytes', total=total_size,
+                                   **tqdm_args)
+        self.objects_bar = tqdm.tqdm(desc='objects', total=total_objects, **tqdm_args)
+
+    def add_result(self, result):
+        if result.get('action', None) == 'download_object':
+            self.objects_bar.update(1)
+            self.bytes_bar.update(result.get('read_length', 0))
+
+
+class TQDMUploadLogger(object):
+    def __init__(self, total_upload_objects, upload_object_sizes, **tqdm_args):
+        import tqdm
+        self.upload_object_sizes = upload_object_sizes
+        self.bytes_bar = tqdm.tqdm(desc='bytes', total=sum(upload_object_sizes.values()),
+                                   **tqdm_args)
+        self.objects_bar = tqdm.tqdm(desc='objects', total=total_upload_objects, **tqdm_args)
+
+    def add_result(self, result):
+        if result.get('action', None) in ('upload_object', 'create_dir_marker'):
+            self.objects_bar.update(1)
+            self.bytes_bar.update(self.upload_object_sizes.get(result['path'], 0))
+
+
 class SwiftUploadLogger(utils.BaseProgressLogger):
     def __init__(self, total_upload_objects, upload_object_sizes):
         super(SwiftUploadLogger, self).__init__(progress_logger)
@@ -1049,6 +1076,7 @@ class SwiftPath(OBSPath):
             raise ValueError('cannot call download on tenant with no container')
         utils.validate_condition(condition)
 
+        total_objects = 0
         if use_manifest:
             # Do a full list with the manifest before the download. This will retry until
             # all results in the manifest can be listed, which helps ensure the download
@@ -1058,6 +1086,12 @@ class SwiftPath(OBSPath):
             manifest_cond = partial(_validate_manifest_download, object_names)
             condition = (utils.join_conditions(condition, manifest_cond)
                          if condition else manifest_cond)
+            total_objects = len(object_names)
+        object_sizes = 0
+        if not self.resource:
+            stat = self.stat()
+            object_sizes = int(stat['Bytes'])
+            total_objects = int(stat['Objects'])
 
         options = settings.get()['swift:download']
         service_options = {
@@ -1071,7 +1105,7 @@ class SwiftPath(OBSPath):
             'skip_identical': options['skip_identical'],
             'shuffle': options['shuffle']
         }
-        with SwiftDownloadLogger() as dl:
+        with TQDMDownloadLogger(total_objects, object_sizes) as dl:
             results = self._swift_service_call('download',
                                                self.container,
                                                options=download_options,
@@ -1220,7 +1254,7 @@ class SwiftPath(OBSPath):
             'skip_identical': options['skip_identical'],
             'checksum': options['checksum']
         }
-        with SwiftUploadLogger(len(swift_upload_objects), all_files_to_upload) as ul:
+        with TQDMUploadLogger(len(swift_upload_objects), all_files_to_upload) as ul:
             results = self._swift_service_call('upload',
                                                self.container,
                                                swift_upload_objects,
