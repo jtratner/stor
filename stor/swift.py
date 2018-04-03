@@ -379,6 +379,33 @@ class SwiftDownloadLogger(utils.BaseProgressLogger):
         ) % (self.num_results, formatted_elapsed_time, mb, mb_s)
 
 
+class TQDMDeleteLogger(object):
+    objects_bar = None
+
+    def __init__(self, total_objects=0, **tqdm_args):
+        self.tqdm_args = tqdm_args
+        self.total_objects = total_objects
+
+    def __enter__(self):
+        import tqdm
+        self.tqdm_args.setdefault('desc', 'deleted')
+        self.objects_bar = tqdm.tqdm(total=self.total_objects, **self.tqdm_args)
+        return self
+
+    def __exit__(self, a, b, c):
+        if self.objects_bar:
+            self.objects_bar.close()
+
+    def add_result(self, result):
+        if result.get('action', None) == 'delete_object':
+            self.objects_bar.update(1)
+        elif result.get('action', None) == 'bulk_delete':
+            deleted = result['result']['Number Deleted']
+            self.objects_bar.update(deleted)
+        else:
+            print('DELETE:add_result: %s', result)
+
+
 class TQDMDownloadLogger(object):
     bytes_bar = None
     objects_bar = None
@@ -412,9 +439,20 @@ class TQDMUploadLogger(object):
     def __init__(self, total_upload_objects, upload_object_sizes, **tqdm_args):
         import tqdm
         self.upload_object_sizes = upload_object_sizes
-        self.bytes_bar = tqdm.tqdm(desc='bytes', total=sum(upload_object_sizes.values()),
-                                   **tqdm_args)
-        self.objects_bar = tqdm.tqdm(desc='objects', total=total_upload_objects, **tqdm_args)
+        self.total_upload_objects = total_upload_objects
+        self.tqdm_args = tqdm_args
+
+    def __enter__(self):
+        import tqdm
+        self.bytes_bar = tqdm.tqdm(desc='bytes', total=sum(self.upload_object_sizes.values()),
+                                   **self.tqdm_args)
+        self.objects_bar = tqdm.tqdm(desc='objects', total=self.total_upload_objects,
+                                     **self.tqdm_args)
+        return self
+
+    def __exit__(self, t, a, e):
+        self.bytes_bar.close()
+        self.objects_bar.close()
 
     def add_result(self, result):
         if result.get('action', None) in ('upload_object', 'create_dir_marker'):
@@ -1345,6 +1383,7 @@ class SwiftPath(OBSPath):
         service_options = {
             'object_dd_threads': options['swift:delete']['object_threads']
         }
+        num_objects = len(self.list())
 
         def _ignore_not_found(service_call):
             """Ignores 404 errors when performing a swift service call"""
@@ -1355,26 +1394,30 @@ class SwiftPath(OBSPath):
                     return []
             return wrapper
 
-        if not to_delete.resource:
-            results = _ignore_not_found(self._swift_service_call)('delete',
-                                                                  to_delete.container,
-                                                                  _service_options=service_options)
-            # Try to delete a segment container since swift client does not
-            # do this automatically
-            if not deleting_segments:
-                segment_containers = ('%s_segments' % to_delete.container,
-                                      '.segments_%s' % to_delete.container,
-                                      '%s+segments' % to_delete.container)
-                for segment_container in segment_containers:
-                    _ignore_not_found(self._swift_service_call)('delete',
-                                                                segment_container,
-                                                                _service_options=service_options)
-        else:
-            objs_to_delete = [p.resource for p in to_delete.list()]
-            results = _ignore_not_found(self._swift_service_call)('delete',
-                                                                  self.container,
-                                                                  objs_to_delete,
-                                                                  _service_options=service_options)
+        with TQDMDeleteLogger(num_objects, desc=str(to_delete)) as dl:
+            if not to_delete.resource:
+                results = _ignore_not_found(self._swift_service_call)('delete',
+                                                                      to_delete.container,
+                                                                      _progress_logger=dl,
+                                                                      _service_options=service_options)
+                # Try to delete a segment container since swift client does not
+                # do this automatically
+                if not deleting_segments:
+                    segment_containers = ('%s_segments' % to_delete.container,
+                                          '.segments_%s' % to_delete.container,
+                                          '%s+segments' % to_delete.container)
+                    for segment_container in segment_containers:
+                        _ignore_not_found(self._swift_service_call)('delete',
+                                                                    segment_container,
+                                                                    _progress_logger=dl,
+                                                                    _service_options=service_options)
+            else:
+                objs_to_delete = [p.resource for p in to_delete.list()]
+                results = _ignore_not_found(self._swift_service_call)('delete',
+                                                                      self.container,
+                                                                      objs_to_delete,
+                                                                      _progress_logger=dl,
+                                                                      _service_options=service_options)
 
         # Verify that all objects have been deleted before returning. Otherwise try deleting again
         with settings.use({'swift': {'num_retries': 0}}):
