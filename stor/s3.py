@@ -289,14 +289,18 @@ class S3Path(OBSPath):
                         if ignore_dir_markers and utils.has_trailing_slash(result['Key']):
                             continue
                         assert 'Path' not in result
-                        result['Path'] = str(path_prefix / result['Key'])
+                        result['Path'] = path_prefix / result['Key']
                         if return_raw:
+                            result['Path'] = str(result)
                             yield result['Path'], result
                         else:
                             yield result['Path']
                 if list_as_dir and 'CommonPrefixes' in page:
                     for result in page['CommonPrefixes']:
-                        yield path_prefix / result['Prefix'], result
+                        if return_raw:
+                            yield path_prefix / result['Prefix'], result
+                        else:
+                            yield path_prefix / result['Prefix']
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e), e)
 
