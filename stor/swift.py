@@ -397,11 +397,14 @@ class TQDMDeleteLogger(object):
             self.objects_bar.close()
 
     def add_result(self, result):
-        if result.get('action', None) == 'delete_object':
+        action = result.get('action', None)
+        if action == 'delete_object':
             self.objects_bar.update(1)
-        elif result.get('action', None) == 'bulk_delete':
-            deleted = result['result']['Number Deleted']
+        elif action == 'bulk_delete':
+            deleted = result.get('result', {}).get('Number Deleted') or 0
             self.objects_bar.update(deleted)
+        elif action == 'delete_container':
+            logger.debug('deleted container: %s', result['container'])
         else:
             print('DELETE:add_result: %s', result)
 
@@ -653,7 +656,12 @@ class SwiftPath(OBSPath):
                     raise r['error']
             results.append(r)
             if service_progress_logger:
-                service_progress_logger.add_result(r)
+                try:
+                    service_progress_logger.add_result(r)
+                except Exception as e:
+                    logger.error('{logger_type} failed ({exc_class}: %s)'.format(
+                        logger_type=type(service_progress_logger).__name__,
+                        exc_class=type(e).__name__), e)
 
         return results
 
