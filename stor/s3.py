@@ -33,6 +33,82 @@ progress_logger = logging.getLogger('%s.progress' % __name__)
 S3File = OBSFile
 
 
+class _S3ClientProxy(object):
+    def _get_s3_client():
+        """Returns the boto3 client and initializes one if it doesn't already exist.
+
+        We use a different boto3 client for each thread/process because boto3 clients
+        are not thread-safe.
+
+        Returns:
+            boto3.Client: An instance of the S3 client.
+        """
+        if not hasattr(_thread_local, 's3_client'):
+            kwargs = {}
+            for k, v in settings.get()['s3'].items():
+                # only pass through keyword arguments that are set to avoid
+                # overriding Boto3's default lookup behavior
+                if v:
+                    kwargs[k] = v
+            session = boto3.session.Session(**kwargs)
+            _thread_local.s3_client = session.client('s3')
+        return _thread_local.s3_client
+
+    def head_bucket(self, Bucket):
+        try:
+            self._get_s3_client().head_bucket(Bucket=Bucket)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket), e)
+
+    def head_object(self, Bucket, Key):
+        try:
+            self._get_s3_client().head_object(Bucket=Bucket, Key=Key)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
+
+    def delete_object(self, Bucket, Key):
+        try:
+            self._get_s3_client().delete_object(Bucket=Bucket, Key=Key)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
+
+    def delete_objects(self, Bucket, Delete):
+        try:
+            self._get_s3_client().delete_objects(Bucket=Bucket, Delete=Delete)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket), e)
+
+    def get_object(self, Bucket, Key):
+        try:
+            self._get_s3_client().get_object(Bucket=Bucket, Key=Key)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
+
+    def download_file(self, Bucket, Key, Filename, Config=None, **kwargs):
+        if isinstance(Config, dict):
+            Config = TransferConfig(**Config)
+        try:
+            self._get_s3_client().download_file(Bucket=Bucket, Key=Key, Filename=Filename,
+                                                Config=Config, **kwargs)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
+
+    def upload_file(self, Filename, Bucket, Key, Config=None, **kwargs):
+        if isinstance(Config, dict):
+            Config = TransferConfig(**Config)
+        try:
+            self._get_s3_client().upload_file(Bucket=Bucket, Key=Key, Filename=Filename,
+                                              Config=Config, **kwargs)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
+
+    def put_object(self, Bucket, Key):
+        try:
+            self._get_s3_client().put_object(Bucket=Bucket, Key=Key)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
+
+
 def _parse_s3_error(exc, **kwargs):
     """
     Parses botocore.exception.ClientError exceptions to throw a more
@@ -66,27 +142,6 @@ def _parse_s3_error(exc, **kwargs):
             return exceptions.ConflictError(msg, exc)
     else:
         return exceptions.RemoteError(msg, exc)
-
-
-def _get_s3_client():
-    """Returns the boto3 client and initializes one if it doesn't already exist.
-
-    We use a different boto3 client for each thread/process because boto3 clients
-    are not thread-safe.
-
-    Returns:
-        boto3.Client: An instance of the S3 client.
-    """
-    if not hasattr(_thread_local, 's3_client'):
-        kwargs = {}
-        for k, v in settings.get()['s3'].items():
-            # only pass through keyword arguments that are set to avoid
-            # overriding Boto3's default lookup behavior
-            if v:
-                kwargs[k] = v
-        session = boto3.session.Session(**kwargs)
-        _thread_local.s3_client = session.client('s3')
-    return _thread_local.s3_client
 
 
 def _get_s3_transfer(config=None):
@@ -194,39 +249,14 @@ class S3Path(OBSPath):
         parts = self._get_parts()
         return parts[0] if len(parts) > 0 and parts[0] else None
 
-    def _s3_client_call(self, method_name, *args, **kwargs):
-        """
-        Creates a boto3 S3 ``Client`` object and runs ``method_name``.
-        """
-        s3_client = _get_s3_client()
-        method = getattr(s3_client, method_name)
-        try:
-            return method(*args, **kwargs)
-        except botocore_exceptions.ClientError as e:
-            six.raise_from(_parse_s3_error(e, **kwargs), e)
-
     def _get_s3_iterator(self, method_name, *args, **kwargs):
         """
         Creates a boto3 ``S3.Paginator`` object and returns an iterator
         that runs over results from ``method_name``.
         """
-        s3_client = _get_s3_client()
+        s3_client = _S3ClientProxy()._get_s3_client()
         paginator = s3_client.get_paginator(method_name)
         return paginator.paginate(**kwargs)
-
-    def _make_s3_transfer(self, method_name, config=None, *args, **kwargs):
-        """
-        Creates a boto3 ``S3Transfer`` object for doing multipart uploads
-        and downloads and executes the given method.
-        """
-        transfer = _get_s3_transfer(config=config)
-        method = getattr(transfer, method_name)
-        try:
-            return method(*args, **kwargs)
-        except boto3_exceptions.S3UploadFailedError as e:
-            six.raise_from(exceptions.FailedUploadError(str(e), e), e)
-        except boto3_exceptions.RetriesExceededError as e:
-            six.raise_from(exceptions.FailedDownloadError(str(e), e), e)
 
     def open(self, mode='r', encoding=None):
         """
@@ -371,7 +401,7 @@ class S3Path(OBSPath):
         """
         if not self.resource:
             try:
-                return bool(self._s3_client_call('head_bucket', Bucket=self.bucket))
+                return bool(_S3ClientProxy().head_bucket(Bucket=self.bucket))
             except exceptions.NotFoundError:
                 return False
         try:
@@ -393,7 +423,7 @@ class S3Path(OBSPath):
         # Handle buckets separately (in case the bucket is empty)
         if not self.resource:
             try:
-                return bool(self._s3_client_call('head_bucket', Bucket=self.bucket))
+                return bool(_S3ClientProxy().head_bucket(Bucket=self.bucket))
             except exceptions.NotFoundError:
                 return False
         try:
@@ -415,13 +445,12 @@ class S3Path(OBSPath):
         """
         bucket = self.bucket
         if not self.resource:
-            # check for existence of bucket
-            self._s3_client_call('head_bucket', Bucket=bucket)
+            _S3ClientProxy().head_bucket(Bucket=bucket)
         else:
             try:
-                return self._s3_client_call('head_object',
-                                            Bucket=bucket,
-                                            Key=self.resource).get('ContentLength', 0)
+                return _S3ClientProxy().head_object(
+                    Bucket=bucket,
+                    Key=self.resource)['ContentLength'] or 0
             except exceptions.NotFoundError:
                 # Check if path is a directory
                 if not self.exists():
@@ -439,7 +468,7 @@ class S3Path(OBSPath):
         resource = self.resource
         if not resource:
             raise ValueError('cannot remove a bucket')
-        return self._s3_client_call('delete_object', Bucket=self.bucket, Key=resource)
+        return _S3ClientProxy().delete_object(self.bucket, resource)
 
     def rmtree(self):
         """
@@ -460,7 +489,7 @@ class S3Path(OBSPath):
                     for i in range(len_range)
                 ]
             }
-            response = self._s3_client_call('delete_objects', Bucket=self.bucket, Delete=objects)
+            response = _S3ClientProxy().delete_objects(Bucket=self.bucket, Delete=objects)
 
             if 'Errors' in response:
                 raise exceptions.RemoteError('an error occurred while using rmtree: %s, Key: %s'
@@ -509,7 +538,7 @@ class S3Path(OBSPath):
         if not self.resource:
             raise ValueError('stat cannot be called on a bucket')
 
-        response = self._s3_client_call('head_object', Bucket=self.bucket, Key=self.resource)
+        response = _S3ClientProxy().head_object(Bucket=self.bucket, Key=self.resource)
         response = {
             key: val for key, val in response.items()
             if key is not 'ResponseMetadata'
@@ -522,7 +551,7 @@ class S3Path(OBSPath):
         Returns:
             bytes: the raw bytes from the object on OBS.
         """
-        body = self._s3_client_call('get_object', Bucket=self.bucket, Key=self.resource)['Body']
+        body = _S3ClientProxy().get_object(Bucket=self.bucket, Key=self.resource)['Body']
         return body.read()
 
     def write_object(self, content):
@@ -566,14 +595,14 @@ class S3Path(OBSPath):
             return result
 
         dl_kwargs = {
-            'bucket': self.bucket,
-            'key': str(self.resource),
-            'filename': str(dest),
-            'config': config
+            'Bucket': self.bucket,
+            'Key': str(self.resource),
+            'Filename': str(dest),
+            'Config': config
         }
         utils.make_dest_dir(self.parts_class(dest).parent)
         try:
-            self._make_s3_transfer('download_file', **dl_kwargs)
+            _S3ClientProxy().download_file(**dl_kwargs)
         except exceptions.RemoteError as e:
             result['success'] = False
             result['error'] = e
@@ -652,7 +681,16 @@ class S3Path(OBSPath):
         return downloaded
 
     def _upload_object(self, upload_obj, config=None):
-        """Upload a single object given an OBSUploadObject."""
+        """Upload a single object given an OBSUploadObject.
+
+        Returns:
+            dict: source, dest (str), success (bool), and optionally an error key"""
+        result = {
+            'source': upload_obj.source,
+            'dest': str(upload_obj.object_name),
+            'success': True
+        }
+
         if utils.has_trailing_slash(upload_obj.object_name):
             # Handle empty directories separately
             ul_kwargs = {
@@ -661,33 +699,25 @@ class S3Path(OBSPath):
             }
             if upload_obj.options and 'headers' in upload_obj.options:
                 ul_kwargs.update(upload_obj.options['headers'])
-            s3_call = self._s3_client_call
-            method = 'put_object'
+            try:
+                _S3ClientProxy().put_object(**ul_kwargs)
+            except exceptions.RemoteError as e:
+                result['success'] = False
+                result['error'] = e
         else:
             ul_kwargs = {
-                'bucket': self.bucket,
-                'key': str(upload_obj.object_name),
-                'filename': upload_obj.source,
-                'config': config
+                'Bucket': self.bucket,
+                'Key': str(upload_obj.object_name),
+                'Filename': upload_obj.source,
+                'Config': config
             }
             if upload_obj.options and 'headers' in upload_obj.options:
                 ul_kwargs['extra_args'] = upload_obj.options['headers']
-            s3_call = self._make_s3_transfer
-            method = 'upload_file'
-
-        result = {
-            'source': upload_obj.source,
-            'dest': S3Path(self.drive + self.bucket) / (ul_kwargs.get('key') or
-                                                        ul_kwargs.get('Key')),
-            'success': True
-        }
-
-        try:
-            s3_call(method, **ul_kwargs)
-        except exceptions.RemoteError as e:
-            result['success'] = False
-            result['error'] = e
-
+            try:
+                _S3ClientProxy().upload_file(**ul_kwargs)
+            except exceptions.RemoteError as e:
+                result['success'] = False
+                result['error'] = e
         return result
 
     def upload(self, source, condition=None, use_manifest=False, headers=None, **kwargs):
