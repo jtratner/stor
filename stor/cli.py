@@ -298,6 +298,7 @@ def _stat(pth):
         headers = stat_dict.pop('Metadata', {})
         stat_dict = OrderedDict([(k, str(v)) for k, v in stat_dict.items()])
         stat_dict.update({'Meta %s' % k.title(): v for k, v in headers.items()})
+        stat_dict['ContentLength'] = prt_bytes(stat_dict['ContentLength'], True)
     elif pth.startswith('swift'):
         stat_dict = pth.stat()
         headers = stat_dict.pop('headers')
