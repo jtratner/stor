@@ -9,6 +9,7 @@ import tempfile
 import threading
 import warnings
 
+import tqdm
 import boto3
 from boto3 import exceptions as boto3_exceptions
 from boto3.s3.transfer import S3Transfer
@@ -34,6 +35,7 @@ S3File = OBSFile
 
 
 class _S3ClientProxy(object):
+    @staticmethod
     def _get_s3_client():
         """Returns the boto3 client and initializes one if it doesn't already exist.
 
@@ -56,31 +58,31 @@ class _S3ClientProxy(object):
 
     def head_bucket(self, Bucket):
         try:
-            self._get_s3_client().head_bucket(Bucket=Bucket)
+            return self._get_s3_client().head_bucket(Bucket=Bucket)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket), e)
 
     def head_object(self, Bucket, Key):
         try:
-            self._get_s3_client().head_object(Bucket=Bucket, Key=Key)
+            return self._get_s3_client().head_object(Bucket=Bucket, Key=Key)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
 
     def delete_object(self, Bucket, Key):
         try:
-            self._get_s3_client().delete_object(Bucket=Bucket, Key=Key)
+            return self._get_s3_client().delete_object(Bucket=Bucket, Key=Key)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
 
     def delete_objects(self, Bucket, Delete):
         try:
-            self._get_s3_client().delete_objects(Bucket=Bucket, Delete=Delete)
+            return self._get_s3_client().delete_objects(Bucket=Bucket, Delete=Delete)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket), e)
 
     def get_object(self, Bucket, Key):
         try:
-            self._get_s3_client().get_object(Bucket=Bucket, Key=Key)
+            return self._get_s3_client().get_object(Bucket=Bucket, Key=Key)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
 
@@ -88,8 +90,8 @@ class _S3ClientProxy(object):
         if isinstance(Config, dict):
             Config = TransferConfig(**Config)
         try:
-            self._get_s3_client().download_file(Bucket=Bucket, Key=Key, Filename=Filename,
-                                                Config=Config, **kwargs)
+            return self._get_s3_client().download_file(Bucket=Bucket, Key=Key, Filename=Filename,
+                                                       Config=Config, **kwargs)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
 
@@ -97,14 +99,14 @@ class _S3ClientProxy(object):
         if isinstance(Config, dict):
             Config = TransferConfig(**Config)
         try:
-            self._get_s3_client().upload_file(Bucket=Bucket, Key=Key, Filename=Filename,
-                                              Config=Config, **kwargs)
+            return self._get_s3_client().upload_file(Bucket=Bucket, Key=Key, Filename=Filename,
+                                                     Config=Config, **kwargs)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
 
     def put_object(self, Bucket, Key):
         try:
-            self._get_s3_client().put_object(Bucket=Bucket, Key=Key)
+            return self._get_s3_client().put_object(Bucket=Bucket, Key=Key)
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
 
