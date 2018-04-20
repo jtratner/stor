@@ -110,6 +110,15 @@ class _S3ClientProxy(object):
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, Bucket=Bucket, Key=Key), e)
 
+    def generate_presigned_url(self, ClientMethod, Params, ExpiresIn=3600):
+        try:
+            return self._get_s3_client().generate_presigned_url(
+                ClientMethod=ClientMethod,
+                Params=Params,
+                ExpiresIn=ExpiresIn)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, **Params), e)
+
 
 def _parse_s3_error(exc, **kwargs):
     """
@@ -864,3 +873,15 @@ class S3Path(OBSPath):
         [1234, datetime.datetime(2017, 12, 23, 19, 31, 19, tzinfo=tzutc()), 'GLACIER']
         """
         return [raw_result['Size'], raw_result['LastModified'], raw_result['StorageClass']]
+
+    def temp_url(self, lifetime, method='GET', inline=True, filename=None):
+        if not inline:
+            raise ValueError('S3 does not support non-inline')
+        if filename:
+            raise ValueError('S3 does not support filename')
+        if method == 'GET':
+            method = 'get_object'
+        elif method == 'HEAD':
+            method = 'head_object'
+        return _S3ClientProxy().generate_presigned_url(ClientMethod=method, Params={'Bucket':
+            self.bucket, 'Key': self.key}, ExpiresIn=lifetime)
