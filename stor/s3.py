@@ -154,28 +154,23 @@ def _parse_s3_error(exc, **kwargs):
     else:
         return exceptions.RemoteError(msg, exc)
 
+class TQDMDownloadLogger(object):
+    def __init__(self, total_download_objects):
+        self.total_download_objects = total_download_objects
+        self.downloaded_bytes = 0
 
-def _get_s3_transfer(config=None):
-    """Returns a boto3 S3Transfer object and initializes one if it doesn't
-    already exist or if config options are different.
+    def __enter__(self):
+        self.object_bar = tqdm.tqdm(total=self.total_download_objects, desc='objects')
+        self.bytes_bar = tqdm.tqdm(desc='bytes', unit='B', unit_scale=True)
+        return self
 
-    Like the boto3 client, we use a different transfer for each thread/process
-    for thread-safety.
+    def __exit__(self, *args, **kwargs):
+        self.object_bar.close()
+        self.bytes_bar.close()
 
-    Args:
-        config (dict): A dict of config options
-
-    Returns:
-        boto3.s3.S3Transfer: An instance of an S3Transfer object.
-    """
-    if (not hasattr(_thread_local, 's3_transfer') or
-            getattr(_thread_local, 's3_transfer_config', None) != config):
-        transfer_config = None
-        if config:
-            transfer_config = TransferConfig(**config)
-        _thread_local.s3_transfer = S3Transfer(_get_s3_client(), config=transfer_config)
-        _thread_local.s3_transfer_config = config
-    return _thread_local.s3_transfer
+    def add_result(self, result):
+        self.object_bar.update(1)
+        self.bytes_bar.update(os.path.getsize(result['dest']))
 
 
 class S3DownloadLogger(utils.BaseProgressLogger):
@@ -664,7 +659,7 @@ class S3Path(OBSPath):
         download_w_config = partial(self._download_object_worker, config=transfer_config)
 
         downloaded = {'completed': [], 'failed': []}
-        with S3DownloadLogger(len(files_to_download)) as dl:
+        with TQDMDownloadLogger(len(files_to_download)) as dl:
             pool = ThreadPool(options['object_threads'])
             try:
                 result_iter = pool.imap_unordered(download_w_config, files_to_download)
