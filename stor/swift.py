@@ -1686,4 +1686,11 @@ class SwiftPath(OBSPath):
         """
         from dateutil.parser import parse
         import pytz
-        return [raw_result['bytes'], parse(raw_result['last_modified']).replace(tzinfo=pytz.utc)]
+        parts = [raw_result['bytes'], parse(raw_result['last_modified']).replace(tzinfo=pytz.utc)]
+        if 'content_type' in raw_result:
+            parts.append(raw_result['content_type'])
+        if 'content_location' in raw_result:
+            loc = raw_result['content_location']
+            loc = ';'.join(loc.split(';')[:2])
+            parts.append(loc)
+        return parts

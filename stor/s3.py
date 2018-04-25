@@ -327,7 +327,7 @@ class S3Path(OBSPath):
                         assert 'Path' not in result
                         result['Path'] = path_prefix / result['Key']
                         if return_raw:
-                            result['Path'] = str(result)
+                            result['Path'] = str(result['Path'])
                             yield result['Path'], result
                         else:
                             yield result['Path']
