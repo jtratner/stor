@@ -119,6 +119,12 @@ class _S3ClientProxy(object):
         except botocore_exceptions.ClientError as e:
             six.raise_from(_parse_s3_error(e, **Params), e)
 
+    def restore_object(self, **kwargs):
+        try:
+            return self._get_s3_client().restore_object(**kwargs)
+        except botocore_exceptions.ClientError as e:
+            six.raise_from(_parse_s3_error(e, **Params), e)
+
 
 def _parse_s3_error(exc, **kwargs):
     """
@@ -852,11 +858,11 @@ class S3Path(OBSPath):
         if tier not in valid_tiers:
             raise ValueError('`tier` must be one of {}'.format(valid_tiers))
         try:
-            self._s3_client_call('restore_object',
+            _S3ClientProxy().restore_object(
                                  Bucket=self.bucket,
                                  Key=self.resource,
                                  RestoreRequest={'Days': days,
-                                                 'GlacierJobParameters': {'Tier': tier}})
+                                                 'GlacierJobParameters': {'Tier': tier}}))
         except exceptions.RestoreAlreadyInProgressError:
             logger.debug('restore already started, not doing anything')
         except exceptions.AlreadyRestoredError:
