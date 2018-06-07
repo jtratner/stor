@@ -862,7 +862,7 @@ class S3Path(OBSPath):
                                  Bucket=self.bucket,
                                  Key=self.resource,
                                  RestoreRequest={'Days': days,
-                                                 'GlacierJobParameters': {'Tier': tier}}))
+                                                 'GlacierJobParameters': {'Tier': tier}})
         except exceptions.RestoreAlreadyInProgressError:
             logger.debug('restore already started, not doing anything')
         except exceptions.AlreadyRestoredError:

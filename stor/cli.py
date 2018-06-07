@@ -94,7 +94,7 @@ from stor import Path
 from stor import utils
 from stor.extensions import swiftstack
 
-PRINT_CMDS = ('list', 'listdir', 'ls', 'cat', 'pwd', 'walkfiles', 'url', 'convert-swiftstack',
+PRINT_CMDS = ('list', 'listdir', 'ls', 'pwd', 'walkfiles', 'url', 'convert-swiftstack',
               '_stat', '_list')
 SERVICES = ('s3', 'swift')
 
@@ -212,7 +212,13 @@ def _clear_env(service=None):
 
 def _cat(pth):
     """Return the contents of a given path."""
-    return pth.open().read()
+    if hasattr(sys.stdout, 'buffer'):
+        # Py 3!
+        buf = sys.stdout.buffer
+    else:
+        # Py 2!
+        buf = sys.stdout
+    shutil.copyfileobj(pth.open('rb'), buf)
 
 
 def _obs_relpath_service(pth):
@@ -342,7 +348,7 @@ def prt_bytes(num_bytes, human_flag):
     else:
         return '%.1f%s' % (num, suffix)
 
-def _rich_list(path):
+def _rich_list(path, human=True):
     import datetime
     from dateutil.tz import tzlocal
     local_tz = tzlocal()
@@ -473,6 +479,7 @@ def create_parser():
 
     parser_rich_list = subparsers.add_parser('_list', help='experimental command to list with useful data')
     parser_rich_list.add_argument('path', type=get_path, metavar='PATH')
+    parser_rich_list.add_argument('--raw', default=False, action='store_true', dest='human')
     parser_rich_list.set_defaults(func=_rich_list)
 
     return parser
@@ -512,8 +519,8 @@ def process_args(args):
 
 
 def print_results(results):
-    assert not isinstance(results, six.binary_type), 'did not coerce to text'
-    if isinstance(results, six.text_type):
+    # assert not isinstance(results, six.binary_type), 'did not coerce to text'
+    if isinstance(results, (six.text_type, six.binary_type)):
         sys.stdout.write(results)
         if not results.endswith('\n'):
             sys.stdout.write('\n')
