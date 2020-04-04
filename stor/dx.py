@@ -57,12 +57,15 @@ def _dx_error_to_descriptive_exception(client_exception):
     http_status = getattr(client_exception, 'code', None)
     if isinstance(client_exception, dxpy.DXAPIError):
         exc_str = '{} - {}'.format(client_exception.name or '',
-                                   client_exception.msg or client_exception.message or '')
+                                   client_exception.msg or client_exception.error_message())
     else:
         exc_str = str(client_exception)
+    if http_status in [401, 403]:
+        return stor_exceptions.UnauthorizedError(
+            'Either use `dx login --token {{your_dx_token}} --save` or set DX_AUTH_TOKEN '
+            'environment variable. {}'.format(exc_str), client_exception
+        )
     status_to_exception = {
-        401: stor_exceptions.UnauthorizedError,
-        403: stor_exceptions.UnauthorizedError,
         404: stor_exceptions.NotFoundError,
         409: stor_exceptions.ConflictError
     }
@@ -157,6 +160,9 @@ class DXPath(OBSPath):
         raise NotImplementedError
 
     def normpath(self):
+        raise NotImplementedError
+
+    def exists(self):
         raise NotImplementedError
 
     @property
@@ -1045,28 +1051,6 @@ class DXPath(OBSPath):
         utils.check_condition(condition, results)
         return results
 
-    def exists(self):
-        """Checks existence of the path.
-
-        Returns True if the path exists, False otherwise.
-
-        Returns:
-            bool: True if the path exists, False otherwise.
-        """
-        try:
-            # first see if there is a specific corresponding object
-            self.stat()
-            return True
-        except (stor_exceptions.NotFoundError, ValueError):
-            pass
-        # otherwise we could be a directory, so try to listdir folder
-        # note list doesn't error on non-existent folder and cannot be used here
-        try:
-            self.listdir(only='folders')
-            return True
-        except stor_exceptions.NotFoundError:
-            return False
-
     def getsize(self):
         if not self.resource:
             return self.stat()['dataUsage']*1e9
@@ -1075,7 +1059,15 @@ class DXPath(OBSPath):
 
     @_wrap_dx_calls()
     def stat(self):
-        """Performs a stat on the path.
+        """Performs a stat on the path. This method follows (slightly vague) behavior of dxpy's
+        describe method. It works as expected for a virtual path. However, for a canonical path:
+
+            Path('dx://project-123:/file-123')
+
+        say project-123 exists and file-123 exists, but file-123 doesn't exist inside project-123,
+        stat will still return the describe response on file-123 (with its default project).
+
+        Use stor.exists to check if a canonical path actually exists.
 
         Raises:
             MultipleObjectsSameNameError: If project or resource is not unique
@@ -1192,6 +1184,26 @@ class DXVirtualPath(DXPath):
         parent, child = self.path_module.split(path_to_split)
         return self.path_class(parent), child
 
+    def exists(self):
+        """Checks existence of the path.
+
+        Returns:
+            bool: True if the path exists, False otherwise.
+        """
+        try:
+            # first see if there is a specific corresponding object
+            self.stat()
+            return True
+        except (stor_exceptions.NotFoundError, ValueError):
+            pass
+        # otherwise we could be a directory, so try to listdir folder
+        # note: list doesn't error on non-existent folder and cannot be used here
+        try:
+            self.listdir(only='folders')
+            return True
+        except stor_exceptions.NotFoundError:
+            return False
+
 
 class DXCanonicalPath(DXPath):
     """Represents fully canonicalized DNAnexus paths:
@@ -1249,3 +1261,20 @@ class DXCanonicalPath(DXPath):
 
         parent, child = self.path_module.split(path_to_split)
         return self.path_class(parent), child
+
+    def exists(self):
+        """Checks existence of the path.
+
+        Returns:
+            bool: True if the path exists, False otherwise.
+        """
+        if self.resource:
+            # check that file exists AND is in the specified project
+            # (list_projects() returns {} when file id doesn't exist)
+            return self.canonical_project in dxpy.DXFile(self.canonical_resource).list_projects()
+        else:
+            try:
+                self.stat()
+                return True
+            except stor_exceptions.NotFoundError:
+                return False

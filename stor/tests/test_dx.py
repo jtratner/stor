@@ -811,6 +811,51 @@ class TestExists(DXTestCase):
         result = dx_p.exists()
         self.assertFalse(result)
 
+    def test_true_canonical_project(self):
+        self.setup_temporary_project()
+        dx_p = DXPath('dx://' + self.proj_id)
+        result = dx_p.exists()
+        self.assertTrue(result)
+
+    def test_false_canonical_project(self):
+        dx_p = DXPath('dx://project-123456789012345678901234')
+        result = dx_p.exists()
+        self.assertFalse(result)
+
+    def test_true_canonical_path(self):
+        self.setup_temporary_project()
+        fh = self.setup_file('/folder_file.txt')
+        dx_p = DXPath('dx://' + self.proj_id + ':/' + fh.get_id())
+        result = dx_p.exists()
+        self.assertTrue(result)
+
+    def test_false_canonical_path(self):
+        self.setup_temporary_project()
+        dx_p = DXPath('dx://' + self.proj_id + ':/file-123456789012345678901234')
+        result = dx_p.exists()
+        self.assertFalse(result)
+        fh = self.setup_file('/folder_file.txt')
+        dx_p = DXPath('dx://project-123456789012345678901234:/' + fh.get_id())
+        result = dx_p.exists()
+        self.assertFalse(result)
+
+    def test_true_mixed_path(self):
+        self.setup_temporary_project()
+        self.setup_files(['/folder_file.txt'])
+        dx_p = DXPath('dx://' + self.proj_id + ':/folder_file.txt')
+        result = dx_p.exists()
+        self.assertTrue(result)
+
+    def test_false_mixed_path(self):
+        self.setup_temporary_project()
+        self.setup_files(['/folder_file.txt'])
+        dx_p = DXPath('dx://' + self.proj_id + ':/random_file')
+        result = dx_p.exists()
+        self.assertFalse(result)
+        dx_p = DXPath('dx://project-123456789012345678901234:/folder_file.txt')
+        result = dx_p.exists()
+        self.assertFalse(result)
+
 
 class TestGlob(DXTestCase):
     def test_suffix_pattern(self):
@@ -1763,7 +1808,9 @@ class TestRaiseError(unittest.TestCase):
         dx_error = dxpy.DXAPIError(content, 403)
         result = dx._dx_error_to_descriptive_exception(dx_error)
         self.assertEqual(type(result), exceptions.UnauthorizedError)
-        self.assertEqual(str(result), 'Unauthorized - Permission denied')
+        self.assertEqual(str(result),
+                         'Either use `dx login --token {your_dx_token} --save` or set '
+                         'DX_AUTH_TOKEN environment variable. Unauthorized - Permission denied')
         self.assertEqual(result.caught_exception, dx_error)
 
     def test_error_404(self):
